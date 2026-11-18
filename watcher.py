@@ -233,9 +233,9 @@ MONTHS = {"jaanuar": 1, "veebruar": 2, "märts": 3, "aprill": 4, "mai": 5, "juun
           "august": 8, "septemb": 9, "oktoob": 10, "novemb": 11, "detsemb": 12}   # stems: "novembril"
 SALE_WORDS = ("müüki", "piletimüük", "müügipäev", "müügile")
 NEWS_SOURCES = {
-    "linnateater": {"api": "https://linnateater.ee/wp-json/wp/v2/posts?per_page=8",
+    "linnateater": {"api": "https://linnateater.ee/wp-json/wp/v2/posts?per_page=25",
                     "feed": "https://linnateater.ee/feed/", "hour": 11},
-    "draamateater": {"api": "https://www.draamateater.ee/wp-json/wp/v2/posts?per_page=8",
+    "draamateater": {"api": "https://www.draamateater.ee/wp-json/wp/v2/posts?per_page=25",
                      "feed": "https://www.draamateater.ee/feed/", "hour": 10},
 }
 
@@ -251,7 +251,7 @@ def latest_posts(src):
     except Exception as e:
         print(f"News API failed: {e}")
     r = requests.get(src["feed"], headers=UA, timeout=30)
-    items = re.findall(r"<item>(.*?)</item>", r.text, flags=re.S)[:8]
+    items = re.findall(r"<item>(.*?)</item>", r.text, flags=re.S)[:25]
     out = []
     for it in items:
         g = lambda tag: (re.search(rf"<{tag}>(.*?)</{tag}>", it, flags=re.S) or [None, ""])[1]
@@ -262,6 +262,8 @@ def latest_posts(src):
 
 def sale_moment(title, text, default_hour):
     """Find the sale start in an announcement, e.g. '2. novembril kell 10 ... müüki'."""
+    if re.search(r"noorte|noorelt", title.lower()):
+        return None                      # youth-night sales are age-limited
     body = f"{title}. {text}"
     sentences = re.split(r"(?<=[a-zäöüõ\)])[.!]\s+(?=[A-ZÄÖÜÕ])", body)
     for sent in sentences:
