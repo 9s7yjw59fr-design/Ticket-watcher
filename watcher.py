@@ -61,6 +61,14 @@ def notify(title, text, url=None, urgent=True):
                       json={"chat_id": TG_CHAT, "text": msg}, timeout=10)
 
 
+def send_file(path, caption):
+    if TG_TOKEN and TG_CHAT:
+        with open(path, "rb") as f:
+            requests.post(f"https://api.telegram.org/bot{TG_TOKEN}/sendDocument",
+                          data={"chat_id": TG_CHAT, "caption": caption[:1000]},
+                          files={"document": f}, timeout=60)
+
+
 def pause():
     time.sleep(random.uniform(*SET["delay_seconds"]))
 
@@ -204,6 +212,10 @@ def main():
         notify("Ticket watcher test", "Alerts are working.", "https://linnateater.ee/en/schedule")
         return
 
+    if MODE == "watch" and SET.get("paused"):
+        print("Watcher paused in config.yaml (settings: paused: true)")
+        return
+
     state = load_state()
     basket_on = SET["add_to_basket"] and MODE == "watch"
 
@@ -213,13 +225,23 @@ def main():
 
         if MODE == "calibrate":
             DEBUG.mkdir(exist_ok=True)
+            n = 0
             for w in CFG["watches"]:
-                for i, (u, _) in enumerate(targets(w)):
+                for u, _ in targets(w):
+                    n += 1
                     p = session.page(w["platform"])
-                    p.goto(u, wait_until="networkidle", timeout=30000)
-                    slug = f"{w['platform']}-{len(list(DEBUG.glob('*.png')))}"
+                    try:
+                        p.goto(u, wait_until="networkidle", timeout=45000)
+                        p.wait_for_timeout(3000)
+                    except Exception as e:
+                        notify("Calibration", f"Could not open {u}: {e}", urgent=False)
+                        continue
+                    slug = f"{n:02d}-{w['platform']}"
                     p.screenshot(path=DEBUG / f"{slug}.png", full_page=True)
+                    (DEBUG / f"{slug}.txt").write_text(f"{w['name']}\n{u}\n\n" + p.inner_text("body"))
                     (DEBUG / f"{slug}.html").write_text(p.content())
+                    send_file(DEBUG / f"{slug}.txt", f"{w['name']} (text)")
+                    send_file(DEBUG / f"{slug}.png", f"{w['name']} (screenshot)")
                     print(f"Saved {u} as {slug}")
                     pause()
         else:

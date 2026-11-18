@@ -1,57 +1,59 @@
 # Ticket watcher config. Edit this file, not the code. All times are Tallinn time.
 
 settings:
-  add_to_basket: false        # switch to true only after calibration (see README)
-  normal_interval_min: 10     # regular check for returned tickets
-  near_show_interval_min: 5   # tighter checks close to a show
-  near_show_hours: 48         # what counts as "close to a show"
-  burst_interval_s: 30        # checks during a sale opening
-  delay_seconds: [3, 7]       # polite random pause between pages
+  paused: true                # stays true until calibration is done
+  add_to_basket: false        # switch to true only after calibration
+  normal_interval_min: 10
+  near_show_interval_min: 5
+  near_show_hours: 48
+  burst_interval_s: 30
+  delay_seconds: [3, 7]
+  preferred_days: [Thu, Fri, Sat]   # alerts for other days come marked as "other day"
+  tickets: 2
 
 platforms:
-  piletilevi:                 # sells Linnateater tickets
-    sold_out_texts: ["välja müüdud", "sold out", "piletid on otsa saanud"]
-    buy_selector: "text=/Osta pilet|Buy ticket/i"      # to calibrate
-    login_steps:                                      # to calibrate
-      - goto: "https://www.piletilevi.ee"
-      - click: "text=/Logi sisse|Log in/i"
-      - fill: "input[type=email]"
-        value: "$USER"
-      - fill: "input[type=password]"
-        value: "$PASS"
-      - click: "button[type=submit]"
-    basket_steps:                                     # to calibrate
-      - click: "text=/Osta pilet|Buy ticket/i"
-      - click: "text=/Parimad kohad|Best available/i"
-      - click: "text=/Lisa ostukorvi|Add to cart/i"
+  linnateater:                # theatre's own schedule pages; tickets sold via Piletilevi
+    sold_out_texts: ["välja müüdud", "sold out"]
+    buy_selector: "text=/Osta pilet|Buy ticket/i"
+    login_steps: []
+    basket_steps: []
     checkout_url: "https://www.piletilevi.ee"
 
-  piletimaailm:               # sells Draamateater tickets
-    sold_out_texts: ["välja müüdud", "sold out", "piletid on otsas"]
-    buy_selector: "text=/Osta|Buy/i"                  # to calibrate
-    login_steps: []                                   # to calibrate
-    basket_steps: []                                  # to calibrate
+  draamateater:               # theatre's own production pages; tickets sold via Piletimaailm
+    sold_out_texts: ["välja müüdud", "sold out"]
+    buy_selector: "text=/Osta|Buy/i"
+    login_steps: []
+    basket_steps: []
     checkout_url: "https://www.piletimaailm.com"
 
 watches:
-  # One block per production. "show" is optional but enables tighter checks before it.
-  - name: "Linnateater - PRODUCTION NAME"
-    platform: piletilevi
+  - name: "Linnateater - Iphigeneia. Agamemnon. Elektra."
+    platform: linnateater
     tickets: 2
-    urls:
-      - url: "https://www.piletilevi.ee/PASTE-EVENT-LINK"
-        show: "2026-12-12T19:00"
-  - name: "Draamateater - PRODUCTION NAME"
-    platform: piletimaailm
-    tickets: 2
-    urls:
-      - url: "https://www.piletimaailm.com/PASTE-EVENT-LINK"
-        show: "2026-12-14T19:00"
+    urls: ["https://linnateater.ee/en/schedule/?filter=production&value=15943"]
 
-sale_openings:
-  # Add a line when a new ticket block is announced. You get a phone alert
-  # 20 minutes before, then checks every 30 seconds for the duration.
-  # "urls" is optional: without it, all watches on that platform are checked.
-  - opens: "2026-12-01T10:00"
-    platform: piletilevi
-    duration_min: 30
+  - name: "Linnateater - Night (Öö, Jaan Tätte)"
+    platform: linnateater
+    tickets: 2
+    urls: ["https://linnateater.ee/en/schedule/?filter=production&value=19981"]
+
+  - name: "Linnateater - Krum"
+    platform: linnateater
+    tickets: 2
+    urls: ["https://linnateater.ee/en/schedule/?filter=production&value=13972"]
+
+  - name: "Draamateater - Rahamaa (Business As Usual)"
+    platform: draamateater
+    tickets: 2
+    urls: ["https://www.draamateater.ee/en/lavastus/rahamaa/"]
+
+  - name: "Draamateater - Prima facie"
+    platform: draamateater
+    tickets: 2
+    urls: ["https://www.draamateater.ee/en/lavastus/prima-facie/"]
+
+sale_openings: []
+  # Example, added when a new ticket block is announced:
+  # - opens: "2027-01-04T10:00"
+  #   platform: draamateater
+  #   duration_min: 30
