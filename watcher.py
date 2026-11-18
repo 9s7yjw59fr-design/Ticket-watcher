@@ -4,7 +4,7 @@
   python watcher.py calibrate  saves screenshots + HTML of every page to debug/
   python watcher.py test       sends a test alert to your phone
 """
-import json, os, random, sys, time
+import base64, json, os, random, sys, time
 from datetime import datetime, timedelta
 from pathlib import Path
 from zoneinfo import ZoneInfo
@@ -18,7 +18,7 @@ STATE_FILE = ROOT / "state.json"
 DEBUG = ROOT / "debug"
 CFG = yaml.safe_load((ROOT / "config.yaml").read_text())
 SET = CFG["settings"]
-MODE = sys.argv[1] if len(sys.argv) > 1 else "watch"
+MODE = (sys.argv[1] if len(sys.argv) > 1 else "watch").strip().lower()
 
 NTFY_TOPIC = os.environ.get("NTFY_TOPIC")
 TG_TOKEN = os.environ.get("TELEGRAM_BOT_TOKEN")
@@ -63,10 +63,33 @@ def notify(title, text, url=None, urgent=True):
 
 def send_file(path, caption):
     if TG_TOKEN and TG_CHAT:
-        with open(path, "rb") as f:
-            requests.post(f"https://api.telegram.org/bot{TG_TOKEN}/sendDocument",
-                          data={"chat_id": TG_CHAT, "caption": caption[:1000]},
-                          files={"document": f}, timeout=60)
+        try:
+            with open(path, "rb") as f:
+                r = requests.post(f"https://api.telegram.org/bot{TG_TOKEN}/sendDocument",
+                                  data={"chat_id": TG_CHAT, "caption": caption[:1000]},
+                                  files={"document": (Path(path).name, f)}, timeout=60)
+            print(f"Telegram file {Path(path).name}: {r.status_code} {r.text[:200]}")
+        except Exception as e:
+            print(f"Telegram file {Path(path).name} failed: {e}")
+
+
+def commit_file(repo_path, data):
+    """Save a calibration file into the repository so it can be read back."""
+    token, repo = os.environ.get("GITHUB_TOKEN"), os.environ.get("GITHUB_REPOSITORY")
+    if not (token and repo):
+        return
+    url = f"https://api.github.com/repos/{repo}/contents/{repo_path}"
+    h = {"Authorization": f"Bearer {token}", "Accept": "application/vnd.github+json"}
+    try:
+        old = requests.get(url, headers=h, timeout=20)
+        body = {"message": f"calibration: {repo_path}",
+                "content": base64.b64encode(data).decode()}
+        if old.status_code == 200:
+            body["sha"] = old.json()["sha"]
+        r = requests.put(url, headers=h, json=body, timeout=60)
+        print(f"Committed {repo_path}: {r.status_code}")
+    except Exception as e:
+        print(f"Commit {repo_path} failed: {e}")
 
 
 def pause():
@@ -240,6 +263,8 @@ def main():
                     p.screenshot(path=DEBUG / f"{slug}.png", full_page=True)
                     (DEBUG / f"{slug}.txt").write_text(f"{w['name']}\n{u}\n\n" + p.inner_text("body"))
                     (DEBUG / f"{slug}.html").write_text(p.content())
+                    commit_file(f"calibration/{slug}.txt", (DEBUG / f"{slug}.txt").read_bytes())
+                    commit_file(f"calibration/{slug}.html", (DEBUG / f"{slug}.html").read_bytes())
                     send_file(DEBUG / f"{slug}.txt", f"{w['name']} (text)")
                     send_file(DEBUG / f"{slug}.png", f"{w['name']} (screenshot)")
                     print(f"Saved {u} as {slug}")
