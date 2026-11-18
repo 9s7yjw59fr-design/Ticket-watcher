@@ -9,6 +9,9 @@ on:
         description: "watch, calibrate or test"
         default: "watch"
 
+permissions:
+  contents: write
+
 concurrency:
   group: ticket-watch
   cancel-in-progress: false
@@ -35,6 +38,7 @@ jobs:
           PILETILEVI_PASS: ${{ secrets.PILETILEVI_PASS }}
           PILETIMAAILM_USER: ${{ secrets.PILETIMAAILM_USER }}
           PILETIMAAILM_PASS: ${{ secrets.PILETIMAAILM_PASS }}
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
       - uses: actions/cache/save@v4
         if: always()
         with:
