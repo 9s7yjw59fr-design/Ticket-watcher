@@ -200,7 +200,7 @@ def due(watch, state, t):
 
 
 def handle_openings(state):
-    for op in CFG.get("sale_openings") or []:
+    for op in (CFG.get("sale_openings") or []) + state.get("auto_openings", []):
         start = parse(op["opens"])
         end = start + timedelta(minutes=op.get("duration_min", 30))
         key = f"{op['opens']}|{op['theatre']}"
@@ -227,6 +227,97 @@ def handle_openings(state):
             save_state(state)
 
 
+# ---------- sale announcements ----------
+
+MONTHS = {"jaanuar": 1, "veebruar": 2, "märts": 3, "aprill": 4, "mai": 5, "juuni": 6, "juuli": 7,
+          "august": 8, "septemb": 9, "oktoob": 10, "novemb": 11, "detsemb": 12}   # stems: "novembril"
+SALE_WORDS = ("müüki", "piletimüük", "müügipäev", "müügile")
+NEWS_SOURCES = {
+    "linnateater": {"api": "https://linnateater.ee/wp-json/wp/v2/posts?per_page=8",
+                    "feed": "https://linnateater.ee/feed/", "hour": 11},
+    "draamateater": {"api": "https://www.draamateater.ee/wp-json/wp/v2/posts?per_page=8",
+                     "feed": "https://www.draamateater.ee/feed/", "hour": 10},
+}
+
+
+def latest_posts(src):
+    """Return [(title, text, link)] from the WordPress API, or the RSS feed as fallback."""
+    try:
+        r = requests.get(src["api"], headers=UA, timeout=30)
+        if r.ok and r.headers.get("content-type", "").startswith("application/json"):
+            return [(clean(p["title"]["rendered"]),
+                     clean(p.get("excerpt", {}).get("rendered", "")) + " " +
+                     clean(p.get("content", {}).get("rendered", ""))[:1500], p["link"]) for p in r.json()]
+    except Exception as e:
+        print(f"News API failed: {e}")
+    r = requests.get(src["feed"], headers=UA, timeout=30)
+    items = re.findall(r"<item>(.*?)</item>", r.text, flags=re.S)[:8]
+    out = []
+    for it in items:
+        g = lambda tag: (re.search(rf"<{tag}>(.*?)</{tag}>", it, flags=re.S) or [None, ""])[1]
+        out.append((clean(g("title").replace("<![CDATA[", "").replace("]]>", "")),
+                    clean(g("description").replace("<![CDATA[", "").replace("]]>", "")), clean(g("link"))))
+    return out
+
+
+def sale_moment(title, text, default_hour):
+    """Find the sale start in an announcement, e.g. '2. novembril kell 10 ... müüki'."""
+    body = f"{title}. {text}"
+    sentences = re.split(r"(?<=[a-zäöüõ\)])[.!]\s+(?=[A-ZÄÖÜÕ])", body)
+    for sent in sentences:
+        low = sent.lower()
+        if not any(w in low for w in SALE_WORDS) or "noorte" in low:
+            continue
+        d = re.search(r"(\d{1,2})\.\s*(" + "|".join(MONTHS) + r")", low)
+        if not d:
+            d2 = re.search(r"\b(\d{1,2})\.(\d{1,2})\b", low)
+            if not d2:
+                continue
+            day, month = int(d2.group(1)), int(d2.group(2))
+        else:
+            day, month = int(d.group(1)), MONTHS[d.group(2)]
+        tm = re.search(r"\b(?:kell|kl)\.?\s*(\d{1,2})(?:[.:](\d{2}))?", low)
+        hh = int(tm.group(1)) if tm else default_hour
+        mm = int(tm.group(2)) if tm and tm.group(2) else 0
+        t = now()
+        try:
+            when = datetime(t.year, month, day, hh, mm, tzinfo=TZ)
+        except ValueError:
+            continue
+        if month < t.month - 6:          # announced in December for a January sale
+            when = when.replace(year=t.year + 1)
+        return when
+    return None
+
+
+def check_news(state, report=None):
+    last = state.get("news_checked")
+    if report is None and last and (now() - parse(last)).total_seconds() < 3600:
+        return
+    state["news_checked"] = now().isoformat()
+    seen = state.setdefault("news_seen", {})
+    for theatre, src in NEWS_SOURCES.items():
+        try:
+            posts = latest_posts(src)
+        except Exception as e:
+            print(f"{theatre} news: could not read ({e})")
+            continue
+        for title, text, link in posts:
+            when = sale_moment(title, text, src["hour"])
+            if report is not None:
+                report.append(f"{theatre} | {title} | sale: {when} | {link}")
+                continue
+            if not when or when < now() or link in seen:
+                continue
+            seen[link] = when.isoformat()
+            state.setdefault("auto_openings", []).append(
+                {"opens": when.isoformat(), "theatre": theatre, "duration_min": 30, "url": link})
+            notify(f"Sale announced: {theatre.capitalize()}",
+                   f"{title}\nSale starts {DAY_NAMES[when.weekday()]} {when:%d.%m} at {when:%H:%M}. "
+                   f"You get a reminder 20 min before, and the watcher checks every "
+                   f"{SET['burst_interval_s']} s for half an hour.", link)
+
+
 # ---------- main ----------
 
 def main():
@@ -247,6 +338,10 @@ def main():
             commit_file(f"calibration/{slug}.html", page.encode())
             found = sessions_for(w)
             print(f"{w['name']}: {len(found)} dates, {sum(s['available'] for s in found)} with tickets")
+        report = []
+        check_news({}, report)
+        commit_file("calibration/news.txt", "\n".join(report).encode())
+        print("\n".join(report))
         return
 
     if SET.get("paused"):
@@ -254,6 +349,7 @@ def main():
         return
 
     state = load_state()
+    check_news(state)
     handle_openings(state)
     t = now()
     for w in CFG["watches"]:
