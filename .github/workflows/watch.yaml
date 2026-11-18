@@ -1,0 +1,52 @@
+name: ticket-watch
+
+on:
+  schedule:
+    - cron: "*/5 6-21 * * *"   # every 5 min, about 08:00-24:00 Tallinn time
+  workflow_dispatch:
+    inputs:
+      mode:
+        description: "watch, calibrate or test"
+        default: "watch"
+
+permissions:
+  contents: write
+
+concurrency:
+  group: ticket-watch
+  cancel-in-progress: false
+
+jobs:
+  watch:
+    runs-on: ubuntu-latest
+    timeout-minutes: 55
+    container: mcr.microsoft.com/playwright/python:v1.48.0-jammy
+    steps:
+      - uses: actions/checkout@v4
+      - run: pip install -r requirements.txt
+      - uses: actions/cache/restore@v4
+        with:
+          path: state.json
+          key: state-${{ github.run_id }}
+          restore-keys: state-
+      - run: python watcher.py ${{ github.event.inputs.mode || 'watch' }}
+        env:
+          NTFY_TOPIC: ${{ secrets.NTFY_TOPIC }}
+          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+          PILETILEVI_USER: ${{ secrets.PILETILEVI_USER }}
+          PILETILEVI_PASS: ${{ secrets.PILETILEVI_PASS }}
+          PILETIMAAILM_USER: ${{ secrets.PILETIMAAILM_USER }}
+          PILETIMAAILM_PASS: ${{ secrets.PILETIMAAILM_PASS }}
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      - uses: actions/cache/save@v4
+        if: always()
+        with:
+          path: state.json
+          key: state-${{ github.run_id }}
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: debug
+          path: debug/
+          if-no-files-found: ignore
