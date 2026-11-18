@@ -1,59 +1,44 @@
 # Ticket watcher config. Edit this file, not the code. All times are Tallinn time.
 
 settings:
-  paused: true                # stays true until calibration is done
-  add_to_basket: false        # switch to true only after calibration
+  paused: false
+  tickets: 2
+  preferred_days: [Thu, Fri, Sat]   # alerts say "Thu-Sat" or "other day"
   normal_interval_min: 10
   near_show_interval_min: 5
   near_show_hours: 48
   burst_interval_s: 30
-  delay_seconds: [3, 7]
-  preferred_days: [Thu, Fri, Sat]   # alerts for other days come marked as "other day"
-  tickets: 2
-
-platforms:
-  linnateater:                # theatre's own schedule pages; tickets sold via Piletilevi
-    sold_out_texts: ["välja müüdud", "sold out"]
-    buy_selector: "text=/Osta pilet|Buy ticket/i"
-    login_steps: []
-    basket_steps: []
-    checkout_url: "https://www.piletilevi.ee"
-
-  draamateater:               # theatre's own production pages; tickets sold via Piletimaailm
-    sold_out_texts: ["välja müüdud", "sold out"]
-    buy_selector: "text=/Osta|Buy/i"
-    login_steps: []
-    basket_steps: []
-    checkout_url: "https://www.piletimaailm.com"
+  delay_seconds: [2, 5]
 
 watches:
+  # Linnateater: one schedule page lists all productions; "match" picks ours by title.
   - name: "Linnateater - Iphigeneia. Agamemnon. Elektra."
-    platform: linnateater
-    tickets: 2
-    urls: ["https://linnateater.ee/en/schedule/?filter=production&value=15943"]
+    theatre: linnateater
+    url: "https://linnateater.ee/en/schedule/"
+    match: ["agamemnon"]
 
-  - name: "Linnateater - Night (Öö, Jaan Tätte)"
-    platform: linnateater
-    tickets: 2
-    urls: ["https://linnateater.ee/en/schedule/?filter=production&value=19981"]
+  - name: "Linnateater - Öö (Night)"
+    theatre: linnateater
+    url: "https://linnateater.ee/en/schedule/"
+    match_exact: ["öö"]
 
   - name: "Linnateater - Krum"
-    platform: linnateater
-    tickets: 2
-    urls: ["https://linnateater.ee/en/schedule/?filter=production&value=13972"]
+    theatre: linnateater
+    url: "https://linnateater.ee/en/schedule/"
+    match: ["krum"]
 
-  - name: "Draamateater - Rahamaa (Business As Usual)"
-    platform: draamateater
-    tickets: 2
-    urls: ["https://www.draamateater.ee/en/lavastus/rahamaa/"]
+  # Draamateater: each production page lists its dates with a Buy link or Sold out.
+  - name: "Draamateater - Rahamaa"
+    theatre: draamateater
+    url: "https://www.draamateater.ee/en/lavastus/rahamaa/"
 
   - name: "Draamateater - Prima facie"
-    platform: draamateater
-    tickets: 2
-    urls: ["https://www.draamateater.ee/en/lavastus/prima-facie/"]
+    theatre: draamateater
+    url: "https://www.draamateater.ee/en/lavastus/prima-facie/"
 
 sale_openings: []
-  # Example, added when a new ticket block is announced:
+  # Added when a new ticket block is announced, e.g.:
   # - opens: "2027-01-04T10:00"
-  #   platform: draamateater
+  #   theatre: draamateater
   #   duration_min: 30
+  #   url: "https://www.draamateater.ee/en/mangukava/"

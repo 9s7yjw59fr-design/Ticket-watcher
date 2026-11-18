@@ -1,16 +1,15 @@
-"""Theatre ticket watcher for Linnateater (Piletilevi) and Draamateater (Piletimaailm).
+"""Theatre ticket watcher for Linnateater and Draamateater.
 
   python watcher.py            normal run (scheduled every 5 min)
-  python watcher.py calibrate  saves screenshots + HTML of every page to debug/
-  python watcher.py test       sends a test alert to your phone
+  python watcher.py calibrate  saves page snapshots into the repo (calibration/)
+  python watcher.py test       sends a test alert
 """
-import base64, json, os, random, sys, time
+import base64, html, json, os, random, re, sys, time
 from datetime import datetime, timedelta
 from pathlib import Path
 from zoneinfo import ZoneInfo
 
 import requests, yaml
-from playwright.sync_api import sync_playwright
 
 TZ = ZoneInfo("Europe/Tallinn")
 ROOT = Path(__file__).parent
@@ -19,10 +18,16 @@ DEBUG = ROOT / "debug"
 CFG = yaml.safe_load((ROOT / "config.yaml").read_text())
 SET = CFG["settings"]
 MODE = (sys.argv[1] if len(sys.argv) > 1 else "watch").strip().lower()
+UA = {"User-Agent": "Mozilla/5.0 (iPhone; CPU iPhone OS 18_0 like Mac OS X) AppleWebKit/605.1.15 "
+                    "(KHTML, like Gecko) Version/18.0 Mobile/15E148 Safari/604.1"}
 
 NTFY_TOPIC = os.environ.get("NTFY_TOPIC")
 TG_TOKEN = os.environ.get("TELEGRAM_BOT_TOKEN")
 TG_CHAT = os.environ.get("TELEGRAM_CHAT_ID")
+
+ET_DAYS = {"E": 0, "T": 1, "K": 2, "N": 3, "R": 4, "L": 5, "P": 6}
+EN_DAYS = {"Mo": 0, "Tu": 1, "We": 2, "Th": 3, "Fr": 4, "Sa": 5, "Su": 6}
+DAY_NAMES = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"]
 
 
 # ---------- helpers ----------
@@ -38,43 +43,33 @@ def parse(s):
 
 def load_state():
     st = json.loads(STATE_FILE.read_text()) if STATE_FILE.exists() else {}
-    for k in ("status", "checked", "warned", "burst_done"):
+    for k in ("sessions", "checked", "warned", "burst_done"):
         st.setdefault(k, {})
     return st
 
 
 def save_state(st):
-    STATE_FILE.write_text(json.dumps(st, indent=2))
+    STATE_FILE.write_text(json.dumps(st, indent=2, ensure_ascii=False))
 
 
 def notify(title, text, url=None, urgent=True):
     print(f"[ALERT] {title} | {text} | {url}")
+    if TG_TOKEN and TG_CHAT:
+        msg = f"{title}\n{text}" + (f"\n{url}" if url else "")
+        r = requests.post(f"https://api.telegram.org/bot{TG_TOKEN}/sendMessage",
+                          json={"chat_id": TG_CHAT, "text": msg,
+                                "disable_notification": not urgent}, timeout=15)
+        if not r.ok:
+            print(f"Telegram error {r.status_code}: {r.text[:200]}")
     if NTFY_TOPIC:
         body = {"topic": NTFY_TOPIC, "title": title, "message": text,
-                "priority": 5 if urgent else 3, "tags": ["performing_arts"]}
+                "priority": 5 if urgent else 3}
         if url:
             body["click"] = url
         requests.post("https://ntfy.sh", json=body, timeout=10)
-    if TG_TOKEN and TG_CHAT:
-        msg = f"{title}\n{text}" + (f"\n{url}" if url else "")
-        requests.post(f"https://api.telegram.org/bot{TG_TOKEN}/sendMessage",
-                      json={"chat_id": TG_CHAT, "text": msg}, timeout=10)
-
-
-def send_file(path, caption):
-    if TG_TOKEN and TG_CHAT:
-        try:
-            with open(path, "rb") as f:
-                r = requests.post(f"https://api.telegram.org/bot{TG_TOKEN}/sendDocument",
-                                  data={"chat_id": TG_CHAT, "caption": caption[:1000]},
-                                  files={"document": (Path(path).name, f)}, timeout=60)
-            print(f"Telegram file {Path(path).name}: {r.status_code} {r.text[:200]}")
-        except Exception as e:
-            print(f"Telegram file {Path(path).name} failed: {e}")
 
 
 def commit_file(repo_path, data):
-    """Save a calibration file into the repository so it can be read back."""
     token, repo = os.environ.get("GITHUB_TOKEN"), os.environ.get("GITHUB_REPOSITORY")
     if not (token and repo):
         return
@@ -82,203 +77,189 @@ def commit_file(repo_path, data):
     h = {"Authorization": f"Bearer {token}", "Accept": "application/vnd.github+json"}
     try:
         old = requests.get(url, headers=h, timeout=20)
-        body = {"message": f"calibration: {repo_path}",
-                "content": base64.b64encode(data).decode()}
+        body = {"message": f"calibration: {repo_path}", "content": base64.b64encode(data).decode()}
         if old.status_code == 200:
             body["sha"] = old.json()["sha"]
-        r = requests.put(url, headers=h, json=body, timeout=60)
-        print(f"Committed {repo_path}: {r.status_code}")
+        print(f"Committed {repo_path}: {requests.put(url, headers=h, json=body, timeout=60).status_code}")
     except Exception as e:
         print(f"Commit {repo_path} failed: {e}")
 
 
-def pause():
-    time.sleep(random.uniform(*SET["delay_seconds"]))
+def show_date(day, month, hhmm):
+    """Build the show datetime, rolling into next year when the month has passed."""
+    t = now()
+    year = t.year + (1 if month < t.month - 1 else 0)
+    h, m = (int(x) for x in hhmm.split(":"))
+    return datetime(year, month, day, h, m, tzinfo=TZ)
 
 
-def targets(watch):
-    for u in watch["urls"]:
-        if isinstance(u, str):
-            yield u, None
-        else:
-            yield u["url"], parse(u["show"]) if u.get("show") else None
+def clean(s):
+    return html.unescape(re.sub(r"<[^>]+>", " ", s)).replace("\xa0", " ").strip()
 
 
-# ---------- browser ----------
+# ---------- page parsers: return list of sessions ----------
+# session = {"title", "when" (datetime), "available" (bool), "link"}
 
-def run_steps(page, steps, pkey):
-    user = os.environ.get(f"{pkey.upper()}_USER", "")
-    pwd = os.environ.get(f"{pkey.upper()}_PASS", "")
-    for step in steps:
-        if "goto" in step:
-            page.goto(step["goto"], wait_until="domcontentloaded")
-        elif "click" in step:
-            page.locator(step["click"]).first.click(timeout=10000)
-        elif "fill" in step:
-            page.locator(step["fill"]).first.fill(
-                step["value"].replace("$USER", user).replace("$PASS", pwd))
-        page.wait_for_timeout(1500)
-
-
-class Session:
-    """One logged-in browser tab per ticket platform."""
-
-    def __init__(self, browser, basket_on):
-        self.browser, self.basket_on, self.pages = browser, basket_on, {}
-
-    def page(self, pkey):
-        if pkey not in self.pages:
-            p = self.browser.new_context(locale="et-EE").new_page()
-            steps = CFG["platforms"][pkey]["login_steps"]
-            if self.basket_on and steps:
-                try:
-                    run_steps(p, steps, pkey)
-                except Exception as e:
-                    notify("Ticket watcher: login failed", f"{pkey}: {e}", urgent=False)
-            self.pages[pkey] = p
-        return self.pages[pkey]
+def parse_linnateater(page, base_url):
+    out = []
+    for b in re.split(r'class="schedule__session-content', page)[1:]:
+        t = re.search(r'schedule__session-title[^>]*>([^<]+)<', b)
+        d = re.search(r'schedule__session-date">\s*(\w)\s+(\d{1,2})\.(\d{1,2})', b)
+        tm = re.search(r'schedule__session-time">\s*(\d{1,2}:\d{2})', b)
+        btn = re.search(r'<a href="([^"]*)" class="button schedule__session-button([^"]*)"', b)
+        if not (t and d and tm and btn):
+            continue
+        out.append({"title": clean(t.group(1)),
+                    "when": show_date(int(d.group(2)), int(d.group(3)), tm.group(1)),
+                    "available": "is-disabled" not in btn.group(2),
+                    "link": btn.group(1) if btn.group(1).startswith("http") else base_url})
+    return out
 
 
-def status_of(page, platform):
-    text = page.inner_text("body").lower()
-    if any(s.lower() in text for s in platform["sold_out_texts"]):
-        return "sold_out"
-    if page.locator(platform["buy_selector"]).count():
-        return "available"
-    return "unknown"
+def parse_draamateater(page, base_url):
+    out = []
+    title = re.search(r"<title>([^<]+?)\s*-\s*Draamateater", page)
+    for row in re.findall(r"<tr>(.*?)</tr>", page, flags=re.S):
+        d = re.search(r"performances-table__date--short[^>]*>\s*<span>\w+&nbsp;</span>\s*(\d{1,2})\.(\d{1,2})", row)
+        tm = re.search(r"cell--time\">\s*(\d{1,2}:\d{2})", row)
+        if not (d and tm):
+            continue
+        actions = row.split("cell--actions", 1)[-1]
+        buy = re.search(r'href="([^"]+)"', actions)
+        out.append({"title": clean(title.group(1)) if title else "",
+                    "when": show_date(int(d.group(1)), int(d.group(2)), tm.group(1)),
+                    "available": bool(buy) and "Sold out" not in actions,
+                    "link": html.unescape(buy.group(1)) if buy else base_url})
+    return out
 
 
-def check(session, watch, url, state):
-    pkey = watch["platform"]
-    platform = CFG["platforms"][pkey]
-    page = session.page(pkey)
+PARSERS = {"linnateater": parse_linnateater, "draamateater": parse_draamateater}
+_cache = {}
+
+
+def fetch(url):
+    if url not in _cache:
+        r = requests.get(url, headers=UA, timeout=30)
+        r.raise_for_status()
+        _cache[url] = r.text
+    return _cache[url]
+
+
+def sessions_for(watch):
+    page = fetch(watch["url"])
+    found = PARSERS[watch["theatre"]](page, watch["url"])
+    match = [m.lower() for m in watch.get("match", [])]
+    exact = [m.lower() for m in watch.get("match_exact", [])]
+    if not (match or exact):
+        return found
+    return [s for s in found
+            if any(m in s["title"].lower() for m in match) or s["title"].lower() in exact]
+
+
+# ---------- checking ----------
+
+def check(watch, state, t):
     try:
-        page.goto(url, wait_until="networkidle", timeout=30000)
+        sessions = [s for s in sessions_for(watch) if s["when"] > t]
     except Exception as e:
-        print(f"Could not open {url}: {e}")
+        print(f"{watch['name']}: could not read page ({e})")
         return
-    status = status_of(page, platform)
-    was = state["status"].get(url)
-    state["status"][url] = status
-    state["checked"][url] = now().isoformat()
-    print(f"{now():%H:%M:%S} {watch['name']}: {status}")
+    preferred = SET.get("preferred_days", ["Thu", "Fri", "Sat"])
+    avail = sum(s["available"] for s in sessions)
+    print(f"{t:%H:%M:%S} {watch['name']}: {len(sessions)} dates, {avail} with tickets")
 
-    if status == "available" and was != "available":
-        text = "Tickets are available."
-        link = url
-        if session.basket_on and platform["basket_steps"]:
-            try:
-                run_steps(page, platform["basket_steps"], pkey)
-                DEBUG.mkdir(exist_ok=True)
-                page.screenshot(path=DEBUG / "basket.png")
-                text = f"{watch['tickets']} tickets are in your basket. Pay now, the hold is short."
-                link = platform["checkout_url"]
-            except Exception as e:
-                text = f"Available, but adding to basket failed ({e}). Buy from the link."
-        notify(watch["name"], text, link)
+    new_dates = []
+    for s in sessions:
+        key = f"{watch['name']}|{s['when'].isoformat()}"
+        was = state["sessions"].get(key)
+        state["sessions"][key] = "available" if s["available"] else "sold_out"
+        day = DAY_NAMES[s["when"].weekday()]
+        label = f"{day} {s['when']:%d.%m %H:%M}"
+        if was is None:
+            new_dates.append(label)
+        if s["available"] and was != "available":
+            star = "Thu-Sat" if day in preferred else "other day"
+            notify(f"Tickets: {watch['name']}",
+                   f"{label} ({star}) has tickets. Buy {SET.get('tickets', 2)} now.",
+                   s["link"], urgent=day in preferred or SET.get("alert_all_days", True))
+
+    first_run = not any(k.startswith(watch["name"] + "|") for k in state.get("seen_before", {}))
+    if new_dates and not first_run:
+        notify(f"New dates: {watch['name']}", "Listed: " + ", ".join(new_dates[:10]),
+               watch["url"], urgent=False)
+    state.setdefault("seen_before", {})[f"{watch['name']}|"] = True
+    state["checked"][watch["name"]] = t.isoformat()
 
 
-# ---------- schedule logic ----------
-
-def due(url, show, state, t):
-    if show and show < t:
-        return False                       # show is over
-    near = show and show - t <= timedelta(hours=SET["near_show_hours"])
-    interval = SET["near_show_interval_min"] if near else SET["normal_interval_min"]
-    last = state["checked"].get(url)
+def due(watch, state, t):
+    keys = [k for k, v in state["sessions"].items() if k.startswith(watch["name"] + "|")]
+    soon = any(t <= parse(k.split("|", 1)[1]) <= t + timedelta(hours=SET["near_show_hours"]) for k in keys)
+    interval = SET["near_show_interval_min"] if soon else SET["normal_interval_min"]
+    last = state["checked"].get(watch["name"])
     return not last or (t - parse(last)).total_seconds() >= interval * 60 - 60
 
 
-def handle_openings(session, state):
+def handle_openings(state):
     for op in CFG.get("sale_openings") or []:
         start = parse(op["opens"])
         end = start + timedelta(minutes=op.get("duration_min", 30))
-        key = f"{op['opens']}|{op['platform']}"
+        key = f"{op['opens']}|{op['theatre']}"
         t = now()
-
         if start - timedelta(minutes=20) <= t < start and key not in state["warned"]:
             notify("Ticket sale opens soon",
-                   f"{op['platform']} sale opens at {start:%H:%M}. Get your phone ready, "
-                   f"the watcher will also try from {start:%H:%M}.",
-                   CFG["platforms"][op["platform"]]["checkout_url"])
+                   f"{op['theatre']} sale opens at {start:%H:%M}. The watcher checks every "
+                   f"{SET['burst_interval_s']} s from then.", op.get("url"))
             state["warned"][key] = t.isoformat()
             save_state(state)
-
         if start - timedelta(minutes=12) <= t <= end and key not in state["burst_done"]:
-            run_burst(session, op, start, end, state)
+            wait = (start - timedelta(minutes=1) - now()).total_seconds()
+            if wait > 0:
+                time.sleep(wait)
+            watches = [w for w in CFG["watches"] if w["theatre"] == op["theatre"]]
+            while now() <= end:
+                t0 = time.time()
+                _cache.clear()
+                for w in watches:
+                    check(w, state, now())
+                save_state(state)
+                time.sleep(max(0, SET["burst_interval_s"] - (time.time() - t0)))
             state["burst_done"][key] = now().isoformat()
             save_state(state)
-
-
-def run_burst(session, op, start, end, state):
-    wait = (start - timedelta(minutes=1) - now()).total_seconds()
-    if wait > 0:
-        print(f"Waiting {int(wait)} s for sale opening")
-        time.sleep(wait)
-    watches = [w for w in CFG["watches"] if w["platform"] == op["platform"]]
-    pairs = [(w, u) for w in watches for u, _ in targets(w)]
-    if op.get("urls"):
-        name = f"New sale ({op['platform']})"
-        pairs = [({"name": name, "platform": op["platform"],
-                   "tickets": op.get("tickets", 2)}, u) for u in op["urls"]]
-    while now() <= end:
-        loop_start = time.time()
-        for w, u in pairs:
-            check(session, w, u, state)
-        time.sleep(max(0, SET["burst_interval_s"] - (time.time() - loop_start)))
 
 
 # ---------- main ----------
 
 def main():
     if MODE == "test":
-        notify("Ticket watcher test", "Alerts are working.", "https://linnateater.ee/en/schedule")
+        notify("Ticket watcher test", "Alerts are working.")
         return
 
-    if MODE == "watch" and SET.get("paused"):
+    if MODE == "calibrate":
+        DEBUG.mkdir(exist_ok=True)
+        for n, w in enumerate(CFG["watches"], 1):
+            try:
+                page = fetch(w["url"])
+            except Exception as e:
+                print(f"Could not open {w['url']}: {e}")
+                continue
+            slug = f"{n:02d}-{w['theatre']}"
+            (DEBUG / f"{slug}.html").write_text(page)
+            commit_file(f"calibration/{slug}.html", page.encode())
+            found = sessions_for(w)
+            print(f"{w['name']}: {len(found)} dates, {sum(s['available'] for s in found)} with tickets")
+        return
+
+    if SET.get("paused"):
         print("Watcher paused in config.yaml (settings: paused: true)")
         return
 
     state = load_state()
-    basket_on = SET["add_to_basket"] and MODE == "watch"
-
-    with sync_playwright() as pw:
-        browser = pw.chromium.launch(headless=True)
-        session = Session(browser, basket_on)
-
-        if MODE == "calibrate":
-            DEBUG.mkdir(exist_ok=True)
-            n = 0
-            for w in CFG["watches"]:
-                for u, _ in targets(w):
-                    n += 1
-                    p = session.page(w["platform"])
-                    try:
-                        p.goto(u, wait_until="networkidle", timeout=45000)
-                        p.wait_for_timeout(3000)
-                    except Exception as e:
-                        notify("Calibration", f"Could not open {u}: {e}", urgent=False)
-                        continue
-                    slug = f"{n:02d}-{w['platform']}"
-                    p.screenshot(path=DEBUG / f"{slug}.png", full_page=True)
-                    (DEBUG / f"{slug}.txt").write_text(f"{w['name']}\n{u}\n\n" + p.inner_text("body"))
-                    (DEBUG / f"{slug}.html").write_text(p.content())
-                    commit_file(f"calibration/{slug}.txt", (DEBUG / f"{slug}.txt").read_bytes())
-                    commit_file(f"calibration/{slug}.html", (DEBUG / f"{slug}.html").read_bytes())
-                    send_file(DEBUG / f"{slug}.txt", f"{w['name']} (text)")
-                    send_file(DEBUG / f"{slug}.png", f"{w['name']} (screenshot)")
-                    print(f"Saved {u} as {slug}")
-                    pause()
-        else:
-            handle_openings(session, state)
-            t = now()
-            for w in CFG["watches"]:
-                for u, show in targets(w):
-                    if due(u, show, state, t):
-                        check(session, w, u, state)
-                        pause()
-        browser.close()
-
+    handle_openings(state)
+    t = now()
+    for w in CFG["watches"]:
+        if due(w, state, t):
+            check(w, state, t)
+            time.sleep(random.uniform(*SET["delay_seconds"]))
     save_state(state)
 
 
