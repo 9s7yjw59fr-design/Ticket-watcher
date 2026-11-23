@@ -35,6 +35,17 @@ watches:
   - name: "Draamateater - Prima facie"
     theatre: draamateater
     url: "https://www.draamateater.ee/en/lavastus/prima-facie/"
+  - name: "Draamateater - Ükskord Liibanonis"
+    theatre: draamateater
+    url: "https://www.draamateater.ee/en/lavastus/ukskord-liibanonis/"
+
+  - name: "Draamateater - Lehman Brothers"
+    theatre: draamateater
+    url: "https://www.draamateater.ee/en/lavastus/lehman-brothers/"
+
+  - name: "Draamateater - Hamlet"
+    theatre: draamateater
+    url: "https://www.draamateater.ee/en/lavastus/hamlet/"
 
 sale_openings: []
   # Added when a new ticket block is announced, e.g.:
