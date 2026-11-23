@@ -27,6 +27,11 @@ watches:
     url: "https://linnateater.ee/en/schedule/"
     match: ["krum"]
 
+  - name: "Linnateater - Uskuja (The Christians)"
+    theatre: linnateater
+    url: "https://linnateater.ee/en/schedule/"
+    match: ["christians", "uskuja"]
+
   # Draamateater: each production page lists its dates with a Buy link or Sold out.
   - name: "Draamateater - Rahamaa"
     theatre: draamateater
@@ -47,6 +52,10 @@ watches:
   - name: "Draamateater - Hamlet"
     theatre: draamateater
     url: "https://www.draamateater.ee/en/lavastus/hamlet/"
+
+  - name: "Draamateater - Eneseabiõpik"
+    theatre: draamateater
+    url: "https://www.draamateater.ee/en/lavastus/eneseabiopik/"
 
 sale_openings: []
   # Added when a new ticket block is announced, e.g.:
