@@ -1,0 +1,21 @@
+# piletimaailm login test
+cookie banner: None
+
+## home
+url: https://www.piletimaailm.com/
+title: Attention Required! | Cloudflare
+clickables: Click to reveal | Cloudflare
+login opener: None
+
+## after opening login
+url: https://www.piletimaailm.com/
+title: Attention Required! | Cloudflare
+clickables: Click to reveal | Cloudflare
+step button: None
+
+## after step button
+url: https://www.piletimaailm.com/
+title: Attention Required! | Cloudflare
+clickables: Click to reveal | Cloudflare
+
+RESULT: no email field found
