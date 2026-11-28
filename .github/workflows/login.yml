@@ -13,7 +13,7 @@ jobs:
     container: mcr.microsoft.com/playwright/python:v1.48.0-jammy
     steps:
       - uses: actions/checkout@v4
-      - run: - run: pip install requests==2.32.3 playwright==1.48.0
+      - run: pip install requests==2.32.3 playwright==1.48.0
       - run: python login_test.py
         env:
           TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
