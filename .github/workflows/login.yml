@@ -1,0 +1,25 @@
+name: login-test
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  login:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    container: mcr.microsoft.com/playwright/python:v1.48.0-jammy
+    steps:
+      - uses: actions/checkout@v4
+      - run: pip install requests==2.32.3
+      - run: python login_test.py
+        env:
+          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+          PILETILEVI_USER: ${{ secrets.PILETILEVI_USER }}
+          PILETILEVI_PASS: ${{ secrets.PILETILEVI_PASS }}
+          PILETIMAAILM_USER: ${{ secrets.PILETIMAAILM_USER }}
+          PILETIMAAILM_PASS: ${{ secrets.PILETIMAAILM_PASS }}
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
