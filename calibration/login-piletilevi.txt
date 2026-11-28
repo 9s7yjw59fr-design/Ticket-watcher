@@ -1,0 +1,27 @@
+# piletilevi login test
+cookie banner: None
+
+## home
+url: https://www.piletilevi.ee/
+title: Piletilevi - Kontsert, teater, kunst, sport, festivalid, film – Piletid internet
+input type=checkbox name=None placeholder=
+input type=checkbox name=None placeholder=
+input type=checkbox name=None placeholder=
+input type=checkbox name=None placeholder=
+input type=text name=searchInput placeholder=Otsi üritust, esinejat, toimumiskohta
+input type=text name=email placeholder=E-mail
+clickables: Cookiebot autor Usercentrics - avaneb uues aknas | Sulgege bänner | Nõusolek | Üksikasjad | Teave | Luban kõik küpsised | Luban ainult valitud küpsised | Luban ainult vajalikud küpsised | VAN GOGH elamusnäitus | kuni P 10.01.2027 Telliskivi 60a/9 | Tallinn VAN GOGH elamusnäitus | Osta pilet | Piletilevi kinkepilet on parim kingitus | Kinkepilet Piletilevi kinkepilet on parim kingitus | LaVita IBU World Championships Biathlon Otepää 2027 | T 09.02.2027 - P 21.02.2027 Tehvandi Spordikeskus LaVita IBU World Championships | Eesti Laul 2027 | L 30.01.2027 Unibet Arena Eesti Laul 2027 | Kultuurikongress 'Parim kaitse on kultuur' | P 29.11.2026 Estonia kontserdisaal Kultuurikongress 'Parim kaitse on kultuur' | 10 Tenors | kampaania! | R 18.12.2026 - L 19.12.2026 Erinevates kohtades 10 Tenors | kampaania! | Must Reede: valitud ürituste piletid nüüd soodsamalt! | Mathei Florea ja New Grounds | Musta Reede 1 = 2 eripakkumine | T 01.12.2026 - N 03.12.2026 Erinevates kohtades Mathei Florea ja New Grounds | M | Sulgpalli võistkondlikud Euroopa meistrivõistlused | K 06.01.2027 - P 10.01.2027 Kalevi Spordihall | Tallinn Sulgpalli võistkondlikud | Miristina | Tõeliste emotsioonide maailm | Grand Ballet Gala | Kampaania! | E 07.12.2026 Rahvusooper Estonia Grand Ballet Gala | Kampaania! | Björn This Way – Tribute to ABBA | L 26.12.2026 - K 30.12.2026 Erinevates kohtades Björn This Way – Tribute to ABBA | N 03.12.2026 • 19:00 Riitused maailma katuselt - Lobsang Chonzor Kadrioru pargi  | L 05.12.2026 - T 22.12.2026 Silvia & Pojad | Jõuluharmoonia Erinevates kohtades | K 13.01.2027 • 19:00 K-Pop Dreamworld: The Ultimate K-Pop Show Alexela Kontserdi | P 06.12.2026 • 17:00 Musamari Koorikooli koguperekontsert JÕULUD ÜLE ILMA Estoni | R 15.01.2027 - L 16.01.2027 The Ultimate Tribute to Queen - Majesty (UK) Erineva | L 28.11.2026 - P 29.11.2026 Keelpillifookus. Vivaldi. Aastaajad Erinevates kohta | K 16.12.2026 - K 30.12.2026 Koit Toome ja Karl-Erik Taukar ''Jõulukontserdid'' E | T 01.12.2026 - N 03.12.2026 Mathei Florea ja New Grounds Erinevates kohtades | R 18.12.2026 - L 19.12.2026 10 Tenors Erinevates kohtades
+after email, step: None
+
+## after email step
+url: https://www.piletilevi.ee/
+title: Piletilevi - Kontsert, teater, kunst, sport, festivalid, film – Piletid internet
+input type=checkbox name=None placeholder=
+input type=checkbox name=None placeholder=
+input type=checkbox name=None placeholder=
+input type=checkbox name=None placeholder=
+input type=text name=searchInput placeholder=Otsi üritust, esinejat, toimumiskohta
+input type=text name=email placeholder=E-mail
+clickables: Cookiebot autor Usercentrics - avaneb uues aknas | Sulgege bänner | Nõusolek | Üksikasjad | Teave | Luban kõik küpsised | Luban ainult valitud küpsised | Luban ainult vajalikud küpsised | VAN GOGH elamusnäitus | kuni P 10.01.2027 Telliskivi 60a/9 | Tallinn VAN GOGH elamusnäitus | Osta pilet | Piletilevi kinkepilet on parim kingitus | Kinkepilet Piletilevi kinkepilet on parim kingitus | LaVita IBU World Championships Biathlon Otepää 2027 | T 09.02.2027 - P 21.02.2027 Tehvandi Spordikeskus LaVita IBU World Championships | Eesti Laul 2027 | L 30.01.2027 Unibet Arena Eesti Laul 2027 | Kultuurikongress 'Parim kaitse on kultuur' | P 29.11.2026 Estonia kontserdisaal Kultuurikongress 'Parim kaitse on kultuur' | 10 Tenors | kampaania! | R 18.12.2026 - L 19.12.2026 Erinevates kohtades 10 Tenors | kampaania! | Must Reede: valitud ürituste piletid nüüd soodsamalt! | Mathei Florea ja New Grounds | Musta Reede 1 = 2 eripakkumine | T 01.12.2026 - N 03.12.2026 Erinevates kohtades Mathei Florea ja New Grounds | M | Sulgpalli võistkondlikud Euroopa meistrivõistlused | K 06.01.2027 - P 10.01.2027 Kalevi Spordihall | Tallinn Sulgpalli võistkondlikud | Miristina | Tõeliste emotsioonide maailm | Grand Ballet Gala | Kampaania! | E 07.12.2026 Rahvusooper Estonia Grand Ballet Gala | Kampaania! | Björn This Way – Tribute to ABBA | L 26.12.2026 - K 30.12.2026 Erinevates kohtades Björn This Way – Tribute to ABBA | N 03.12.2026 • 19:00 Riitused maailma katuselt - Lobsang Chonzor Kadrioru pargi  | L 05.12.2026 - T 22.12.2026 Silvia & Pojad | Jõuluharmoonia Erinevates kohtades | K 13.01.2027 • 19:00 K-Pop Dreamworld: The Ultimate K-Pop Show Alexela Kontserdi | P 06.12.2026 • 17:00 Musamari Koorikooli koguperekontsert JÕULUD ÜLE ILMA Estoni | R 15.01.2027 - L 16.01.2027 The Ultimate Tribute to Queen - Majesty (UK) Erineva | Kõik | Teatri Top | Muusika Top
+
+RESULT: no password field after email (site may offer only Smart-ID or code login)
