@@ -10,9 +10,8 @@ from playwright.sync_api import sync_playwright
 
 SITES = [
     ("piletilevi", "https://www.piletilevi.ee/", "PILETILEVI_USER", "PILETILEVI_PASS"),
-    ("piletimaailm", "https://www.piletimaailm.com/", "PILETIMAAILM_USER", "PILETIMAAILM_PASS"),
 ]
-COOKIE_WORDS = ["Nõustun", "Nõustu", "Luba kõik", "Aktsepteeri", "Accept all", "Accept", "Allow all", "OK"]
+COOKIE_WORDS = ["Luban kõik küpsised", "Nõustun", "Nõustu", "Luba kõik", "Aktsepteeri", "Accept all", "Accept", "Allow all", "OK"]
 LOGIN_WORDS = ["Logi sisse", "Sisene", "Sisselogimine", "Log in", "Login", "Sign in", "Minu konto", "My account"]
 STEP_WORDS = ["E-post", "E-mail", "Email", "Parool", "Parooliga", "Password", "Jätka", "Continue", "Edasi"]
 LOGGED_IN_WORDS = ["Logi välja", "Välju", "Log out", "Logout", "Sign out"]
@@ -63,6 +62,44 @@ def snapshot(page, log, label):
         log.append(f"snapshot error: {e}")
 
 
+EMAIL_SEL = ("input[type=email], input[name*=mail i], input[autocomplete=username], "
+             "input[name*=user i], input[name*=login i]")
+OPENER_RE = re.compile(r"login|logi|sisene|account|konto|profile|profiil|kasutaja|user|minu", re.I)
+
+
+def header_items(page):
+    items = page.locator("header a, header button, nav a, nav button, [class*=header i] a, "
+                         "[class*=header i] button, [class*=user i], [class*=account i], [class*=profile i]")
+    out = []
+    for i in range(min(items.count(), 60)):
+        el = items.nth(i)
+        try:
+            if not el.is_visible():
+                continue
+            desc = " ".join(f"{a}={safe(el.get_attribute(a))}" for a in ("href", "aria-label", "title", "class")
+                            if el.get_attribute(a))
+            out.append((el, desc))
+        except Exception:
+            pass
+    return out
+
+
+def login_email(page):
+    """A visible login email box, skipping the footer newsletter signup."""
+    loc = page.locator(EMAIL_SEL)
+    for i in range(min(loc.count(), 10)):
+        el = loc.nth(i)
+        try:
+            if not el.is_visible():
+                continue
+            bad = el.evaluate("e => !!e.closest('footer, [class*=newsletter i], [class*=subscribe i], [id*=newsletter i]')")
+            if not bad:
+                return el
+        except Exception:
+            pass
+    return None
+
+
 def click_text(scope, words, timeout=2500):
     for w in words:
         loc = scope.get_by_role("button", name=re.compile(re.escape(w), re.I))
@@ -94,32 +131,42 @@ def login(p, site, home, user, pw, log):
         log.append(f"cookie banner: {click_text(page, COOKIE_WORDS)}")
         snapshot(page, log, "home")
 
+        try:
+            page.locator("#CybotCookiebotDialogBodyLevelButtonLevelOptinAllowAll").click(timeout=3000)
+            log.append("cookiebot accepted")
+        except Exception:
+            pass
+        time.sleep(1)
         pw_sel = "input[type=password]"
-        email_sel = "input[type=email], input[name*=mail i], input[autocomplete=username], input[name*=user i], input[name*=login i]"
-        if not visible(page, email_sel) and not visible(page, pw_sel):
+        items = header_items(page)
+        log.append("\n## header items\n" + "\n".join(d for _, d in items[:40]))
+        hit = None
+        for el, desc in items:
+            if OPENER_RE.search(desc):
+                try:
+                    el.click(timeout=3000)
+                    hit = desc
+                    break
+                except Exception:
+                    pass
+        if not hit:
             hit = click_text(page, LOGIN_WORDS)
-            if not hit:
-                for sel in ["a[href*=login i]", "a[href*=sisene i]", "a[href*=konto i]", "a[href*=account i]",
-                            "[aria-label*=konto i]", "[aria-label*=login i]", "[aria-label*=account i]",
-                            "[aria-label*=profiil i]", "[aria-label*=kasutaja i]"]:
-                    loc = page.locator(sel)
-                    if loc.count() and loc.first.is_visible():
-                        loc.first.click()
-                        hit = sel
-                        break
-            log.append(f"login opener: {hit}")
-            time.sleep(3)
-            snapshot(page, log, "after opening login")
+        log.append(f"login opener: {hit}")
+        time.sleep(3)
+        snapshot(page, log, "after opening login")
 
-        if not visible(page, email_sel) and not visible(page, pw_sel):
+        if not login_email(page) and not visible(page, pw_sel):
             log.append(f"step button: {click_text(page, STEP_WORDS)}")
             time.sleep(2)
             snapshot(page, log, "after step button")
 
-        if not visible(page, email_sel):
-            return "no email field found"
-        page.locator(email_sel).locator("visible=true").first.fill(user)
+        email = login_email(page)
+        if not email:
+            return "no login email field found (newsletter box ignored)"
+        email.fill(user)
         if not visible(page, pw_sel):
+            email.press("Enter")
+            time.sleep(3)
             log.append(f"after email, step: {click_text(page, STEP_WORDS)}")
             time.sleep(3)
             snapshot(page, log, "after email step")
